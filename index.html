@@ -341,8 +341,8 @@
       buildToyState();
       bagName.textContent = toy === 'popit' ? 'Pop-it' : toy === 'squishy' ? 'Squishy' : 'Keyboard';
       toyTitle.textContent = bagName.textContent;
-      toyMode.textContent = toy === 'popit' ? 'Tap the large bubbles' : toy === 'squishy' ? 'Press and drag the gel block' : 'Tap the 3×3 key pad';
-      playHint.textContent = toy === 'popit' ? 'Each bubble should visibly sink and flip.' : toy === 'squishy' ? 'Press and drag to squash and stretch it.' : 'Tap keys for quick travel and a click.';
+      toyMode.textContent = toy === 'popit' ? 'Tap the large bubbles' : toy === 'squishy' ? 'Press and drag the cube' : 'Tap the 3×3 key pad';
+      playHint.textContent = toy === 'popit' ? 'Each bubble should visibly sink and flip.' : toy === 'squishy' ? 'Press and drag to mold it from all sides.' : 'Tap keys for quick travel and a click.';
       bagHint.textContent = 'First tap peeks the toy. Tap again to start playing.';
       setScreen('bag');
     }
@@ -394,7 +394,7 @@
       roundedRect(ctx, 0, 0, boardW, boardH, boardW * 0.08);
       ctx.stroke();
 
-      const cols = 5, rows = 5;
+      const cols = 4, rows = 4;
       const insetX = boardW * 0.14;
       const insetY = boardH * 0.14;
       const stepX = (boardW - insetX * 2) / (cols - 1);
@@ -411,8 +411,8 @@
         const rowColor = colors[Math.min(5, Math.floor(cy / stripeH))];
         const press = b.depth;
         ctx.save();
-        ctx.translate(cx, cy + press * r * 0.22);
-        ctx.scale(1 - press * 0.08, 1 - press * 0.18);
+        ctx.translate(cx, cy + press * r * 0.26);
+        ctx.scale(1 - press * 0.1, 1 - press * 0.22);
         ctx.fillStyle = 'rgba(255,255,255,0.22)';
         ctx.beginPath(); ctx.arc(0, 0, r * 1.1, 0, Math.PI * 2); ctx.fill();
         const g = ctx.createRadialGradient(-r * 0.25, -r * 0.35, r * 0.18, 0, 0, r);
@@ -426,7 +426,7 @@
         ctx.beginPath(); ctx.arc(0, 0, r * 0.9, Math.PI * 1.12, Math.PI * 1.72); ctx.stroke();
         if (!tiny && press > 0.5) {
           ctx.strokeStyle = 'rgba(72,42,78,0.16)';
-          ctx.beginPath(); ctx.arc(0, 0, r * 0.68, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2); ctx.stroke();
         }
         ctx.restore();
       }
@@ -437,21 +437,21 @@
       const s = state.squish;
       s.x += (s.tx - s.x) * 0.18;
       s.y += (s.ty - s.y) * 0.18;
-      s.press += (s.targetPress - s.press) * 0.2;
-      const size = Math.min(w, h) * (tiny ? 0.52 : 0.56);
+      s.press += (s.targetPress - s.press) * 0.16;
+      const size = Math.min(w, h) * (tiny ? 0.52 : 0.58);
       const cx = w / 2;
-      const cy = h / 2 + (tiny ? 0 : 6);
-      const dx = s.x * (tiny ? 0.12 : 0.22);
-      const dy = s.y * (tiny ? 0.12 : 0.22);
-      const squashX = 1 + s.press * 0.12 + Math.abs(dx) * 0.0016;
-      const squashY = 1 - s.press * 0.14 - Math.abs(dy) * 0.0012;
+      const cy = h / 2 + (tiny ? 0 : 4);
+      const dx = s.x * (tiny ? 0.12 : 0.2);
+      const dy = s.y * (tiny ? 0.12 : 0.2);
+      const sx = 1 + s.press * 0.08 + Math.abs(dx) * 0.0014;
+      const sy = 1 - s.press * 0.11 - Math.abs(dy) * 0.001;
       ctx.save();
-      ctx.translate(cx + dx * 0.18, cy + dy * 0.18);
-      ctx.scale(squashX, Math.max(0.82, squashY));
+      ctx.translate(cx + dx * 0.2, cy + dy * 0.2);
+      ctx.scale(sx, Math.max(0.84, sy));
       const r = size * 0.18;
       const grad = ctx.createLinearGradient(-size/2, -size/2, size/2, size/2);
       grad.addColorStop(0, 'rgba(208,255,255,0.96)');
-      grad.addColorStop(0.38, 'rgba(84,236,239,0.8)');
+      grad.addColorStop(0.35, 'rgba(84,236,239,0.8)');
       grad.addColorStop(1, 'rgba(43,166,207,0.92)');
       roundedRect(ctx, -size/2, -size/2, size, size, r);
       ctx.shadowColor = 'rgba(65,168,210,0.24)';
@@ -460,18 +460,18 @@
       ctx.fill();
       ctx.shadowBlur = 0;
       ctx.lineWidth = tiny ? 2 : 3;
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.52)';
       ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
       ctx.beginPath();
       ctx.ellipse(-size * 0.12, -size * 0.18, size * 0.2, size * 0.12, -0.45, 0, Math.PI * 2);
       ctx.fill();
       if (!tiny) {
-        ctx.fillStyle = 'rgba(25,92,120,0.25)';
-        ctx.font = `${size * 0.16}px Georgia, serif`;
+        ctx.fillStyle = 'rgba(25,92,120,0.24)';
+        ctx.font = f"${size * 0.16}px Georgia, serif";
         ctx.textAlign = 'center';
-        ctx.fillText('FEEL', 0, -size * 0.03);
-        ctx.fillText('SOFT', 0, size * 0.16);
+        ctx.fillText('MOLD', 0, -size * 0.03);
+        ctx.fillText('ME', 0, size * 0.16);
       }
       ctx.restore();
     }
@@ -484,27 +484,28 @@
       ctx.translate(baseX + size / 2, baseY + size / 2);
       ctx.rotate(tiny ? -0.12 : -0.09);
       ctx.translate(-size / 2, -size / 2);
-      roundedRect(ctx, 0, size * 0.06, size, size * 0.9, size * 0.12);
+      const bodyH = size * 0.88;
       const side = ctx.createLinearGradient(0, 0, 0, size);
-      side.addColorStop(0, '#d6d0d5'); side.addColorStop(1, '#bfb8bf');
+      roundedRect(ctx, 0, size * 0.06, size, bodyH, size * 0.12);
+      side.addColorStop(0, '#d9d2d8'); side.addColorStop(1, '#b7b0b7');
       ctx.fillStyle = side; ctx.fill();
-      roundedRect(ctx, 0, 0, size, size * 0.86, size * 0.12);
-      const top = ctx.createLinearGradient(0, 0, size, size);
-      top.addColorStop(0, '#fffefb'); top.addColorStop(1, '#ece7ea');
+      roundedRect(ctx, 0, 0, size, bodyH, size * 0.12);
+      const top = ctx.createLinearGradient(0, 0, size, bodyH);
+      top.addColorStop(0, '#ffffff'); top.addColorStop(1, '#ece7ea');
       ctx.fillStyle = top; ctx.fill();
       ctx.strokeStyle = 'rgba(70,58,82,0.1)'; ctx.lineWidth = 3; ctx.stroke();
       const pad = size * 0.16, gap = size * 0.045, key = (size - pad * 2 - gap * 2) / 3;
-      const paletteKeys = ['#2a202f','#4e404f','#77616f','#ead64f','#f1c645','#e7b42d','#97b4ff','#cb95ff','#f0a6ff'];
+      const paletteKeys = ['#ffb6d9','#ff8fc7','#ff72ba','#c497ff','#a97dff','#8bb0ff','#ffd45e','#ffbf3f','#ff9a7a'];
       for (let i = 0; i < 9; i++) {
         state.keyDepths[i] *= 0.78;
         const d = state.keyDepths[i];
         const col = i % 3, row = Math.floor(i / 3);
         const x = pad + col * (key + gap), y = pad + row * (key + gap) + d * 8;
-        roundedRect(ctx, x, y + key * 0.16, key, key * 0.9, key * 0.18);
+        roundedRect(ctx, x, y + key * 0.14, key, key * 0.92, key * 0.18);
         ctx.fillStyle = 'rgba(63,45,74,0.18)'; ctx.fill();
-        roundedRect(ctx, x, y, key, key * 0.82, key * 0.18);
+        roundedRect(ctx, x, y, key, key * 0.84, key * 0.18);
         const g = ctx.createLinearGradient(x, y, x, y + key);
-        g.addColorStop(0, '#fff1ff'); g.addColorStop(0.16, paletteKeys[i]); g.addColorStop(1, '#241d28');
+        g.addColorStop(0, '#fff1ff'); g.addColorStop(0.16, paletteKeys[i]); g.addColorStop(1, '#251d2a');
         ctx.fillStyle = g; ctx.fill();
         ctx.fillStyle = 'rgba(255,255,255,0.34)';
         roundedRect(ctx, x + key * 0.12, y + key * 0.08, key * 0.76, key * 0.18, key * 0.08);
@@ -547,7 +548,7 @@
       const rx = x - cx, ry = y - cy;
       const ux = rx * Math.cos(-angle) - ry * Math.sin(-angle) + boardW / 2;
       const uy = rx * Math.sin(-angle) + ry * Math.cos(-angle) + boardH / 2;
-      const cols = 5, rows = 5;
+      const cols = 4, rows = 4;
       const insetX = boardW * 0.14, insetY = boardH * 0.14;
       const stepX = (boardW - insetX * 2) / (cols - 1);
       const stepY = (boardH - insetY * 2) / (rows - 1);
@@ -574,8 +575,8 @@
         }
       } else if (state.currentToy === 'squishy') {
         state.squish.targetPress = 1;
-        state.squish.tx = ((x / rect.width) - 0.5) * 120;
-        state.squish.ty = ((y / rect.height) - 0.5) * 120;
+        state.squish.tx = ((x / rect.width) - 0.5) * 140;
+        state.squish.ty = ((y / rect.height) - 0.5) * 140;
         playSound('squish');
       } else {
         const w = rect.width, h = rect.height;
