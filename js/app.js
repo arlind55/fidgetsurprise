@@ -1,14 +1,22 @@
-// App shell: picks the toy, sizes the canvas, routes touches and runs the loop.
+// App shell: home screen, opening a toy, sizing the canvas, routing touches
+// and running the loop.
 (() => {
   'use strict';
 
   const ORDER = ['popit', 'squishy', 'slime'];
+  const CARDS = {
+    popit: { line: 'Pop all the bubbles', art: '<i></i>'.repeat(9) },
+    squishy: { line: 'Squeeze the foam friend', art: '' },
+    slime: { line: 'Stretch the gooey slime', art: '' },
+  };
+  const homeEl = document.getElementById('home');
+  const playEl = document.getElementById('play');
+  const cardsEl = document.getElementById('cards');
   const canvas = document.getElementById('board');
   const ctx = canvas.getContext('2d');
   const statusEl = document.getElementById('status');
   const hintEl = document.getElementById('hint');
   const flipBtn = document.getElementById('flipBtn');
-  const tabsEl = document.getElementById('tabs');
 
   const app = {
     reduceMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -18,38 +26,56 @@
 
   let current = null, size = { W: 0, H: 0 };
 
-  function readSaved() {
-    try { return localStorage.getItem('fidget.toy'); } catch (_) { return null; }
-  }
-
-  function choose(key) {
+  function showToy(key) {
     current = Toys[key];
-    try { localStorage.setItem('fidget.toy', key); } catch (_) {}
-    for (const b of tabsEl.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.toy === key));
+    homeEl.hidden = true;
+    playEl.hidden = false;
     flipBtn.hidden = !current.flip;
     canvas.setAttribute('aria-label', `${current.name}. ${current.hint}.`);
-    current.layout(size.W, size.H);
+    resize();
     app.refreshStatus();
     app.setHint(current.hint);
   }
 
-  // Toy picker
+  function showHome() {
+    current = null;
+    playEl.hidden = true;
+    homeEl.hidden = false;
+  }
+
+  // The address keeps the open toy (#slime), so the phone's back gesture
+  // returns to the home screen.
+  function route() {
+    const key = location.hash.slice(1);
+    if (ORDER.includes(key)) showToy(key); else showHome();
+  }
+
+  // Home screen cards
   for (const key of ORDER) {
     const toy = Toys[key];
     toy.init(app, ctx);
     const b = document.createElement('button');
     b.type = 'button';
-    b.dataset.toy = key;
-    b.innerHTML = `<span class="tab-icon" aria-hidden="true">${toy.icon}</span><span>${toy.name}</span>`;
+    b.className = `card card-${key}`;
+    b.innerHTML = `<span class="art art-${key}" aria-hidden="true">${CARDS[key].art}</span>` +
+      `<span class="card-text"><span class="card-name">${toy.name}</span><span class="card-line">${CARDS[key].line}</span></span>`;
     b.addEventListener('click', () => {
-      if (current === toy) return;
       Feel.ensureAudio();
-      Feel.tick(1);
+      Feel.tick(2);
       Feel.pop(620);
-      choose(key);
+      history.pushState({ fromHome: true }, '', '#' + key);
+      route();
     });
-    tabsEl.appendChild(b);
+    cardsEl.appendChild(b);
   }
+
+  document.getElementById('backBtn').addEventListener('click', () => {
+    Feel.tick(1);
+    Feel.pop(520);
+    if (history.state && history.state.fromHome) history.back(); // popstate re-routes
+    else { history.replaceState(null, '', location.pathname + location.search); route(); }
+  });
+  window.addEventListener('popstate', route);
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -119,11 +145,11 @@
   document.addEventListener('click', () => Feel.flush());
 
   // --- toolbar ---
-  flipBtn.addEventListener('click', () => current.flip && current.flip());
+  flipBtn.addEventListener('click', () => current && current.flip && current.flip());
   document.getElementById('colorsBtn').addEventListener('click', () => {
     Feel.ensureAudio();
     Feel.tick(1);
-    current.nextColour();
+    if (current) current.nextColour();
   });
   const soundBtn = document.getElementById('soundBtn');
   soundBtn.addEventListener('click', () => {
@@ -142,14 +168,14 @@
   function frame(now) {
     const dt = Math.min(0.033, (now - lastT) / 1000);
     lastT = now;
-    ctx.clearRect(0, 0, size.W, size.H);
-    current.frame(dt, now);
+    if (current) {
+      ctx.clearRect(0, 0, size.W, size.H);
+      current.frame(dt, now);
+    }
     requestAnimationFrame(frame);
   }
 
-  window.addEventListener('resize', resize);
-  resize();
-  const saved = readSaved();
-  choose(ORDER.includes(saved) ? saved : 'popit');
+  window.addEventListener('resize', () => { if (current) resize(); });
+  route();
   requestAnimationFrame((t) => { lastT = t; frame(t); });
 })();
