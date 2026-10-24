@@ -1,5 +1,6 @@
-// Pop it: a silicone board of bubbles. Press sinks a bubble, lifting pops it,
-// sliding pops every bubble you cross, and the board flips when all are popped.
+// Pop it: a silicone board of bubbles in a few shapes. Press sinks a bubble,
+// lifting pops it, sliding pops every bubble you cross, and the board flips
+// when all are popped.
 (window.Toys = window.Toys || {}).popit = (() => {
   'use strict';
 
@@ -9,13 +10,55 @@
     ['#ff7eb6', '#ff9ec7', '#ffb3d1', '#c9a7ff', '#a68bff', '#ffb3d1', '#ff9ec7', '#ff7eb6'],
     ['#ff6b4a', '#ff8f3f', '#ffb238', '#ffd23f', '#ffb238', '#ff8f3f', '#ff6b4a', '#f2545b'],
   ];
-  const COLS = 6, ROWS = 8, TOTAL = COLS * ROWS;
   const { shade } = window.Paint;
+
+  // Outlines are drawn into a box that holds a cols x rows grid of bubbles;
+  // a bubble is kept only if it fits inside the outline.
+  const SHAPES = [
+    { name: 'Classic', cols: 6, rows: 8, outline: roundedBox },
+    { name: 'Heart', cols: 8, rows: 8, outline: heart },
+    { name: 'Star', cols: 8, rows: 8, outline: star },
+    { name: 'Round', cols: 7, rows: 7, outline: round },
+  ];
+
+  function roundedBox(p, x, y, w, h, cell) { p.roundRect(x, y, w, h, cell * 0.55); }
+
+  function round(p, x, y, w, h) { p.arc(x + w / 2, y + h / 2, Math.min(w, h) / 2, 0, Math.PI * 2); }
+
+  function heart(p, x, y, w, h) {
+    const X = (u) => x + u * w, Y = (v) => y + v * h;
+    p.moveTo(X(0.5), Y(0.97));
+    p.bezierCurveTo(X(0.14), Y(0.72), X(-0.03), Y(0.47), X(0.03), Y(0.27));
+    p.bezierCurveTo(X(0.1), Y(0.04), X(0.4), Y(-0.02), X(0.5), Y(0.2));
+    p.bezierCurveTo(X(0.6), Y(-0.02), X(0.9), Y(0.04), X(0.97), Y(0.27));
+    p.bezierCurveTo(X(1.03), Y(0.47), X(0.86), Y(0.72), X(0.5), Y(0.97));
+    p.closePath();
+  }
+
+  function star(p, x, y, w, h, cell) {
+    const cx = x + w / 2, cy = y + h * 0.54, R = Math.min(w, h) * 0.53, inner = R * 0.52;
+    const pts = [];
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? inner : R;
+      pts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]);
+    }
+    const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    p.moveTo(...mid(pts[9], pts[0]));
+    for (let i = 0; i < 10; i++) {
+      const [mx, my] = mid(pts[i], pts[(i + 1) % 10]);
+      p.arcTo(pts[i][0], pts[i][1], mx, my, i % 2 ? cell * 0.3 : cell * 0.6);
+    }
+    p.closePath();
+  }
+
+  const testCtx = document.createElement('canvas').getContext('2d'); // for hit-testing outlines
 
   let app, ctx;
   const state = {
     palette: 0,
+    shape: 0,
     bubbles: [],
+    grid: [],            // row-major cells: bubble or null
     ripples: [],
     geo: null,
     flip: null,          // { start, swapped }
@@ -25,18 +68,37 @@
     autoFlipTimer: 0,
   };
 
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      state.bubbles.push({ r, c, up: true, held: false, t: 1, v: 0, squash: 0, sv: 0 });
+  function layout(W, H) {
+    const s = SHAPES[state.shape];
+    const pad = 10;
+    const cell = Math.min((W - pad * 2) / (s.cols + 0.6), (H - pad * 2) / (s.rows + 0.6));
+    const bw = cell * (s.cols + 0.6), bh = cell * (s.rows + 0.6);
+    const g = { W, H, cell, bw, bh, bx: (W - bw) / 2, by: (H - bh) / 2, rad: cell * 0.36, inset: cell * 0.3 };
+    g.path = new Path2D();
+    s.outline(g.path, g.bx, g.by, bw, bh, cell);
+    state.geo = g;
+
+    // Keep each bubble's state across a resize; a new shape starts fresh.
+    const old = state.grid.length === s.cols * s.rows ? state.grid : [];
+    state.grid = [];
+    state.bubbles = [];
+    for (let r = 0; r < s.rows; r++) {
+      for (let c = 0; c < s.cols; c++) {
+        const b = old[r * s.cols + c] || { r, c, up: true, held: false, t: 1, v: 0, squash: 0, sv: 0 };
+        const [x, y] = bubbleCenter(b);
+        let fits = testCtx.isPointInPath(g.path, x, y);
+        for (let k = 0; fits && k < 8; k++) {
+          const a = (k * Math.PI) / 4;
+          fits = testCtx.isPointInPath(g.path, x + Math.cos(a) * g.rad * 1.2, y + Math.sin(a) * g.rad * 1.2);
+        }
+        state.grid.push(fits ? b : null);
+        if (fits) state.bubbles.push(b);
+      }
     }
+    state.popped = state.bubbles.filter((b) => !b.up).length;
   }
 
-  function layout(W, H) {
-    const pad = 10;
-    const cell = Math.min((W - pad * 2) / (COLS + 0.6), (H - pad * 2) / (ROWS + 0.6));
-    const bw = cell * (COLS + 0.6), bh = cell * (ROWS + 0.6);
-    state.geo = { W, H, cell, bw, bh, bx: (W - bw) / 2, by: (H - bh) / 2, rad: cell * 0.36, inset: cell * 0.3 };
-  }
+  function total() { return state.bubbles.length; }
 
   function bubbleCenter(b) {
     const g = state.geo;
@@ -45,10 +107,12 @@
 
   function bubbleAt(x, y) {
     const g = state.geo;
+    const s = SHAPES[state.shape];
     const c = Math.floor((x - g.bx - g.inset) / g.cell);
     const r = Math.floor((y - g.by - g.inset) / g.cell);
-    if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return null;
-    const b = state.bubbles[r * COLS + c];
+    if (c < 0 || c >= s.cols || r < 0 || r >= s.rows) return null;
+    const b = state.grid[r * s.cols + c];
+    if (!b) return null;
     const [cx, cy] = bubbleCenter(b);
     // generous target: anywhere in the bubble's cell counts, for small fingers
     return Math.hypot(x - cx, y - cy) <= g.cell * 0.62 ? b : null;
@@ -64,11 +128,11 @@
     state.pressV += 2.5;
     state.popped++;
     Feel.tick(2);
-    Feel.pop(380 + (ROWS - b.r) * 32 + b.c * 6);
+    Feel.pop(380 + (SHAPES[state.shape].rows - b.r) * 32 + b.c * 6);
     const [x, y] = bubbleCenter(b);
     if (!app.reduceMotion) state.ripples.push({ x, y, age: 0 });
     app.refreshStatus();
-    if (state.popped === TOTAL) {
+    if (state.popped === total()) {
       app.setHint('All popped! Flipping…');
       clearTimeout(state.autoFlipTimer);
       state.autoFlipTimer = setTimeout(() => flip(true), 650);
@@ -127,38 +191,26 @@
   }
 
   // --- drawing ---
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
   function drawBoard() {
     const g = state.geo, pal = PALETTES[state.palette];
-    const r = g.cell * 0.55;
+    const rows = SHAPES[state.shape].rows;
 
     // drop shadow under the silicone slab
     ctx.save();
     ctx.shadowColor = 'rgba(45,35,80,0.28)';
     ctx.shadowBlur = g.cell * 0.5;
     ctx.shadowOffsetY = g.cell * 0.18;
-    roundRect(g.bx, g.by, g.bw, g.bh, r);
     ctx.fillStyle = pal[0];
-    ctx.fill();
+    ctx.fill(g.path);
     ctx.restore();
 
     // colour bands, one per row
     ctx.save();
-    roundRect(g.bx, g.by, g.bw, g.bh, r);
-    ctx.clip();
-    for (let i = 0; i < ROWS; i++) {
-      const y0 = i === 0 ? g.by : g.by + g.inset + i * g.cell;
-      const y1 = i === ROWS - 1 ? g.by + g.bh : g.by + g.inset + (i + 1) * g.cell;
-      ctx.fillStyle = pal[i];
+    ctx.clip(g.path);
+    for (let i = 0; i < rows; i++) {
+      const y0 = i === 0 ? g.by - g.cell : g.by + g.inset + i * g.cell;
+      const y1 = i === rows - 1 ? g.by + g.bh + g.cell : g.by + g.inset + (i + 1) * g.cell;
+      ctx.fillStyle = pal[i % pal.length];
       ctx.fillRect(g.bx, y0, g.bw, y1 - y0 + 0.5);
     }
     // soft rubbery sheen across the slab
@@ -171,15 +223,17 @@
     ctx.restore();
 
     // raised rim
-    roundRect(g.bx + 1.5, g.by + 1.5, g.bw - 3, g.bh - 3, r - 1.5);
-    ctx.lineWidth = 3;
+    ctx.save();
+    ctx.clip(g.path);
+    ctx.lineWidth = 6;
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.stroke();
+    ctx.stroke(g.path);
+    ctx.restore();
   }
 
   function drawBubble(b) {
     const g = state.geo, pal = PALETTES[state.palette];
-    const color = pal[b.r];
+    const color = pal[b.r % pal.length];
     const [x, y] = bubbleCenter(b);
     const t = Math.max(-1.2, Math.min(1.2, b.t));
     const sq = b.squash;
@@ -300,7 +354,19 @@
     layout, frame, down, move, up,
     flip: () => flip(false),
     nextColour() { state.palette = (state.palette + 1) % PALETTES.length; Feel.pop(700); },
-    status: () => `${state.popped} <small>/ ${TOTAL} popped</small>`,
+    styleIcon: '⭐',
+    styleLabel: 'Change shape',
+    nextStyle() {
+      if (state.flip) return;
+      clearTimeout(state.autoFlipTimer);
+      state.shape = (state.shape + 1) % SHAPES.length;
+      state.grid = [];
+      layout(state.geo.W, state.geo.H);
+      Feel.whoosh();
+      app.refreshStatus();
+      app.setHint(`${SHAPES[state.shape].name} pop it`);
+    },
+    status: () => `${state.popped} <small>/ ${total()}</small>`,
   };
   return toy;
 })();

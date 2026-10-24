@@ -1,9 +1,13 @@
-// Slime: a tub of glossy goo. Poking sinks a dimple, dragging stretches the
-// slime with your finger, and it oozes slowly back when you let go.
+// Slime: a tub of goo. Poking sinks a dimple, dragging stretches the slime
+// with your finger, and it oozes slowly back when you let go. Stretching
+// traps air bubbles that pop when poked. Crunchy slime is full of foam beads.
 (window.Toys = window.Toys || {}).slime = (() => {
   'use strict';
 
   const COLOURS = ['#5ee07a', '#a774ff', '#4cc3ff', '#ff6fc0', '#ffc23d'];
+  const STYLES = ['Glossy', 'Crunchy'];
+  const BEADS = ['#ffffff', '#ffd6e8', '#d6f0ff', '#fff3b0', '#e2d6ff'];
+  const MAX_AIR = 16;
   const SPACING = 15;      // px between mesh points
   const LIGHT = norm([-0.45, -0.6, 0.66]);
   const HALF = norm([LIGHT[0], LIGHT[1], LIGHT[2] + 1]);
@@ -14,11 +18,16 @@
   let app, ctx;
   const state = {
     colour: 0,
+    style: 0,
     tub: null,
     nx: 0, ny: 0,
     rx: null, ry: null, ox: null, oy: null, vx: null, vy: null, h: null, hv: null,
     grabs: new Map(),
     sparkles: [],
+    beads: [],
+    airs: [],    // trapped air bubbles, in slime coordinates (u, v)
+    bursts: [],  // popping bubbles, on screen
+    nextAir: 0,
     pokes: 0,
     time: 0,
   };
@@ -53,6 +62,50 @@
         gold: Math.random() < 0.35,
       });
     }
+    state.beads = [];
+    for (let s = 0; s < 260; s++) {
+      state.beads.push({
+        u: 0.03 + Math.random() * 0.94, v: 0.03 + Math.random() * 0.94,
+        size: 2.6 + Math.random() * 2.4, colour: BEADS[(Math.random() * BEADS.length) | 0],
+      });
+    }
+    state.airs = [];
+    state.bursts = [];
+    for (let s = 0; s < 5; s++) addAir(Math.random(), Math.random());
+  }
+
+  function addAir(u, v, size) {
+    if (state.airs.length >= MAX_AIR) return;
+    state.airs.push({
+      u: Math.max(0.05, Math.min(0.95, u)), v: Math.max(0.05, Math.min(0.95, v)),
+      size: size || 5 + Math.random() * 9, born: state.time,
+    });
+  }
+
+  // Where a point fixed in the slime (u, v from 0 to 1) is on screen now.
+  function matPos(su, sv) {
+    const { nx, ny, rx, ry, ox, oy } = state;
+    const fx = su * (nx - 1), fy = sv * (ny - 1);
+    const i = Math.min(nx - 2, fx | 0), j = Math.min(ny - 2, fy | 0);
+    const u = fx - i, v = fy - j;
+    const a = j * nx + i, b = a + 1, c = a + nx + 1, d = a + nx;
+    const lerp2 = (A, O) =>
+      (A[a] + O[a]) * (1 - u) * (1 - v) + (A[b] + O[b]) * u * (1 - v) +
+      (A[c] + O[c]) * u * v + (A[d] + O[d]) * (1 - u) * v;
+    return [lerp2(rx, ox), lerp2(ry, oy)];
+  }
+
+  function popAirsNear(x, y) {
+    let popped = 0;
+    state.airs = state.airs.filter((a) => {
+      const [ax, ay] = matPos(a.u, a.v);
+      if (Math.hypot(ax - x, ay - y) > a.size + 30) return true;
+      state.bursts.push({ x: ax, y: ay, size: a.size, age: 0 });
+      Feel.pop(1250 - a.size * 30);
+      popped++;
+      return false;
+    });
+    return popped;
   }
 
   function nearest(x, y) {
@@ -81,7 +134,7 @@
     state.grabs.set(id, { x0: x, y0: y, x, y, idx, w, ox0, oy0, wp, travelled: 0, lx: x, ly: y });
     state.pokes++;
     Feel.tick(2);
-    Feel.gloop(1);
+    if (!popAirsNear(x, y)) STYLES[state.style] === 'Crunchy' ? Feel.crunch(1) : Feel.gloop(1);
     app.refreshStatus();
   }
 
@@ -93,8 +146,13 @@
     g.lx = x; g.ly = y;
     if (g.travelled > 55) {
       g.travelled = 0;
-      Feel.gloop(0.45);
+      STYLES[state.style] === 'Crunchy' ? Feel.crunch(0.5) : Feel.gloop(0.45);
       Feel.tick(1);
+      // stretching folds air into the slime
+      if (Math.random() < 0.5) {
+        const { tub } = state;
+        addAir((g.x0 - tub.x) / tub.w + (Math.random() - 0.5) * 0.1, (g.y0 - tub.y) / tub.h + (Math.random() - 0.5) * 0.1);
+      }
     }
   }
 
@@ -140,6 +198,10 @@
 
   function frame(dt) {
     state.time += dt;
+    if (state.time > state.nextAir) {
+      state.nextAir = state.time + 4 + Math.random() * 3;
+      if (state.airs.length < 6) addAir(Math.random(), Math.random());
+    }
     for (let i = 0; i < 2; i++) step(dt / 2);
 
     const { tub, nx, ny, rx, ry, ox, oy, h } = state;
@@ -232,16 +294,56 @@
     ctx.fillStyle = gloss;
     ctx.fillRect(tub.x, tub.y, tub.w, tub.h);
 
+    // foam beads in crunchy slime
+    if (STYLES[state.style] === 'Crunchy') {
+      ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+      ctx.lineWidth = 1;
+      for (const bd of state.beads) {
+        const [x, y] = matPos(bd.u, bd.v);
+        ctx.beginPath();
+        ctx.arc(x, y, bd.size, 0, Math.PI * 2);
+        ctx.fillStyle = bd.colour;
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    // trapped air bubbles
+    for (const a of state.airs) {
+      const [x, y] = matPos(a.u, a.v);
+      const r = a.size * Math.min(1, (state.time - a.born) * 4);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
+      ctx.fill();
+      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x - r * 0.35, y - r * 0.35, r * 0.25, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fill();
+    }
+    state.bursts = state.bursts.filter((bu) => (bu.age += dt) < 0.3);
+    for (const bu of state.bursts) {
+      const p = bu.age / 0.3;
+      ctx.lineWidth = 2 * (1 - p);
+      ctx.strokeStyle = `rgba(255,255,255,${0.8 * (1 - p)})`;
+      ctx.beginPath();
+      ctx.arc(bu.x, bu.y, bu.size * (1 + p * 1.4), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(255,255,255,${0.8 * (1 - p)})`;
+      for (let k = 0; k < 6; k++) {
+        const an = (k * Math.PI) / 3 + bu.size;
+        ctx.beginPath();
+        ctx.arc(bu.x + Math.cos(an) * bu.size * (1.2 + p * 2), bu.y + Math.sin(an) * bu.size * (1.2 + p * 2), 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     // glitter rides along inside the goo
     for (const s of state.sparkles) {
-      const fx = s.u * (nx - 1), fy = s.v * (ny - 1);
-      const i = Math.min(nx - 2, fx | 0), j = Math.min(ny - 2, fy | 0);
-      const u = fx - i, v = fy - j;
-      const a = j * nx + i, b = a + 1, c = a + nx + 1, d = a + nx;
-      const lerp2 = (A, O) =>
-        (A[a] + O[a]) * (1 - u) * (1 - v) + (A[b] + O[b]) * u * (1 - v) +
-        (A[c] + O[c]) * u * v + (A[d] + O[d]) * (1 - u) * v;
-      const x = lerp2(rx, ox), y = lerp2(ry, oy);
+      const [x, y] = matPos(s.u, s.v);
       const tw = 0.45 + 0.55 * Math.max(0, Math.sin(state.time * 2.6 + s.phase));
       ctx.fillStyle = s.gold ? `rgba(255,236,150,${0.85 * tw})` : `rgba(255,255,255,${0.9 * tw})`;
       ctx.beginPath();
@@ -265,6 +367,13 @@
     init(a, c) { app = a; ctx = c; },
     layout, frame, down, move, up,
     nextColour() { state.colour = (state.colour + 1) % COLOURS.length; Feel.gloop(0.7); },
+    styleIcon: '✨',
+    styleLabel: 'Change slime',
+    nextStyle() {
+      state.style = (state.style + 1) % STYLES.length;
+      STYLES[state.style] === 'Crunchy' ? Feel.crunch(0.8) : Feel.gloop(0.8);
+      app.setHint(`${STYLES[state.style]} slime`);
+    },
     status: () => `${state.pokes} <small>pokes</small>`,
   };
 })();
