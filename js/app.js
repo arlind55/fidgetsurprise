@@ -17,6 +17,7 @@
   const statusEl = document.getElementById('status');
   const hintEl = document.getElementById('hint');
   const flipBtn = document.getElementById('flipBtn');
+  const styleBtn = document.getElementById('styleBtn');
 
   const app = {
     reduceMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -31,6 +32,11 @@
     homeEl.hidden = true;
     playEl.hidden = false;
     flipBtn.hidden = !current.flip;
+    styleBtn.hidden = !current.nextStyle;
+    if (current.nextStyle) {
+      styleBtn.textContent = current.styleIcon;
+      styleBtn.setAttribute('aria-label', current.styleLabel);
+    }
     canvas.setAttribute('aria-label', `${current.name}. ${current.hint}.`);
     resize();
     app.refreshStatus();
@@ -146,6 +152,11 @@
 
   // --- toolbar ---
   flipBtn.addEventListener('click', () => current && current.flip && current.flip());
+  styleBtn.addEventListener('click', () => {
+    Feel.ensureAudio();
+    Feel.tick(1);
+    if (current && current.nextStyle) current.nextStyle();
+  });
   document.getElementById('colorsBtn').addEventListener('click', () => {
     Feel.ensureAudio();
     Feel.tick(1);
@@ -157,10 +168,6 @@
     soundBtn.setAttribute('aria-pressed', String(Feel.soundOn));
     soundBtn.textContent = Feel.soundOn ? '🔊' : '🔈';
     Feel.tick(1);
-  });
-  document.getElementById('buzzBtn').addEventListener('click', () => {
-    Feel.tick(3);
-    app.setHint(Feel.canVibrate || Feel.isIOS ? 'Did you feel a buzz?' : 'This browser can\'t buzz');
   });
 
   // --- loop ---

@@ -173,9 +173,20 @@ window.Feel = (() => {
     hiss('bandpass', f * 3, f * 1.5, 4, t, 0.3, 0.002, 0.05);
   }
 
+  // Crunchy foam beads: a quick scatter of tiny crackles.
+  function crunch(amount = 1) {
+    if (!ready()) return;
+    const n = 3 + Math.round(amount * 4);
+    for (let i = 0; i < n; i++) {
+      const t = ac.currentTime + 0.003 + Math.random() * 0.09 * amount;
+      hiss('bandpass', 1400 + Math.random() * 2600, 1200, 3, t, 0.35 * amount, 0.001, 0.018);
+    }
+    tone('sine', vary(220), 120, ac.currentTime + 0.002, 0.12 * amount, 0.01, 0.08);
+  }
+
   return {
     isIOS, canVibrate, tick, flush, pattern, ensureAudio,
-    pop, whoosh, cheer, squish, puff, gloop, plop,
+    pop, whoosh, cheer, squish, puff, gloop, plop, crunch,
     get soundOn() { return soundOn; },
     set soundOn(v) { soundOn = v; },
   };
