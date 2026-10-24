@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Pop It Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap">
+<style>
+  /* Layout: one full-screen play surface, a slim toolbar on top, the silicone board fills the rest. */
+  /* Single deliberate look: a soft lilac playroom behind bright silicone, the same in light and dark. */
+  :root {
+    --bg: #ece6fb;
+    --bg-deep: #d9cff5;
+    --ink: #2d2350;
+    --ink-soft: #6a5f93;
+    --chip: #ffffff;
+    --chip-press: #f3efff;
+    --accent: #7b5cff;
+    --font-display: "Fredoka", "Baloo 2", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    color-scheme: light;
+  }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(120% 90% at 50% 0%, var(--bg) 40%, var(--bg-deep) 100%), var(--bg);
+    color: var(--ink);
+    font-family: var(--font-display);
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 12px;
+    box-sizing: border-box;
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .count {
+    margin-right: auto;
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+  .count small { font-size: 0.85rem; font-weight: 500; color: var(--ink-soft); }
+  button {
+    font: inherit;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--ink);
+    background: var(--chip);
+    border: 0;
+    border-radius: 999px;
+    padding: 10px 16px;
+    min-height: 44px;
+    box-shadow: 0 3px 0 var(--bg-deep), 0 6px 14px rgba(45, 35, 80, 0.12);
+    touch-action: manipulation;
+    cursor: pointer;
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+  button:active { transform: translateY(3px); box-shadow: 0 0 0 var(--bg-deep), 0 2px 6px rgba(45, 35, 80, 0.12); background: var(--chip-press); }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button[aria-pressed="false"] { color: var(--ink-soft); }
+  .stage { position: relative; flex: 1; min-height: 0; }
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+  }
+  .hint {
+    text-align: center;
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+    margin: 0;
+    min-height: 1.3em;
+  }
+  .haptic-switch { display: none; }
+</style>
+<style>html,body{margin:0}</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="bar">
+    <div class="count" id="count" aria-live="polite">0 <small>/ 48 popped</small></div>
+    <button id="colorsBtn" type="button" aria-label="Change colours">🎨 Colours</button>
+    <button id="soundBtn" type="button" aria-pressed="true" aria-label="Sound">🔊</button>
+    <button id="flipBtn" type="button" aria-label="Flip the pop it">🔄 Flip</button>
+  </div>
+  <div class="stage">
+    <canvas id="board" aria-label="Pop it toy. Tap or swipe the bubbles to pop them."></canvas>
+  </div>
+  <p class="hint" id="hint">Tap or swipe the bubbles</p>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------------------------------------------------------------------------
+  // Feel layer: haptics + sound. Shared by every toy later on.
+  // ---------------------------------------------------------------------------
+  const Feel = (() => {
+    const ua = navigator.userAgent;
+    const isIOS = /iP(hone|ad|od)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const canVibrate = typeof navigator.vibrate === 'function' && !isIOS;
+
+    // iPhone Safari has no Vibration API. Since iOS 18, toggling an
+    // <input type="checkbox" switch> plays the system "tick" haptic, and
+    // clicking its label from a touch handler triggers it.
+    let iosLabel = null;
+    if (isIOS) {
+      iosLabel = document.createElement('label');
+      iosLabel.className = 'haptic-switch';
+      iosLabel.setAttribute('aria-hidden', 'true');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.setAttribute('switch', '');
+      input.tabIndex = -1;
+      iosLabel.appendChild(input);
+      document.body.appendChild(iosLabel);
+    }
+
+    let lastTick = 0;
+    function tick(ms = 12) {
+      const now = performance.now();
+      if (now - lastTick < 30) return; // the motor can't keep up faster than this
+      lastTick = now;
+      try {
+        if (canVibrate) navigator.vibrate(ms);
+        else if (iosLabel) iosLabel.click();
+      } catch (_) { /* haptics are a bonus */ }
+    }
+
+    function pattern(times, gap, ms = 18) {
+      if (canVibrate) {
+        const p = [];
+        for (let i = 0; i < times; i++) { p.push(ms); if (i < times - 1) p.push(gap); }
+        try { navigator.vibrate(p); } catch (_) {}
+        return;
+      }
+      for (let i = 0; i < times; i++) setTimeout(() => { lastTick = 0; tick(ms); }, i * gap);
+    }
+
+    // --- sound ---
+    let ac = null, master = null, noise = null, soundOn = true;
+    function ensureAudio() {
+      if (!ac) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return null;
+        ac = new Ctx();
+        const comp = ac.createDynamicsCompressor();
+        comp.threshold.value = -14; comp.ratio.value = 4;
+        master = ac.createGain();
+        master.gain.value = 0.9;
+        master.connect(comp).connect(ac.destination);
+        noise = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.5), ac.sampleRate);
+        const d = noise.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
+      if (ac.state !== 'running') ac.resume().catch(() => {});
+      return ac;
+    }
+
+    function env(g, t, peak, attack, decay) {
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+    }
+
+    // A pop is a fast downward "blip" plus a tiny bright click of air.
+    function pop(pitch = 480) {
+      if (!soundOn || !ensureAudio()) return;
+      const t = ac.currentTime + 0.002;
+      const f = pitch * (0.94 + Math.random() * 0.12);
+
+      const o = ac.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(f * 1.9, t);
+      o.frequency.exponentialRampToValueAtTime(f * 0.55, t + 0.07);
+      const og = ac.createGain();
+      env(og, t, 0.55, 0.003, 0.09);
+      o.connect(og).connect(master);
+      o.start(t); o.stop(t + 0.12);
+
+      const n = ac.createBufferSource();
+      n.buffer = noise;
+      const bp = ac.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = f * 5; bp.Q.value = 1.4;
+      const ng = ac.createGain();
+      env(ng, t, 0.4, 0.001, 0.025);
+      n.connect(bp).connect(ng).connect(master);
+      n.start(t, Math.random() * 0.4); n.stop(t + 0.04);
+    }
+
+    // A flip is a soft whoosh of rubbery air.
+    function whoosh() {
+      if (!soundOn || !ensureAudio()) return;
+      const t = ac.currentTime + 0.005;
+      const n = ac.createBufferSource();
+      n.buffer = noise; n.loop = true;
+      const lp = ac.createBiquadFilter();
+      lp.type = 'lowpass'; lp.Q.value = 3;
+      lp.frequency.setValueAtTime(250, t);
+      lp.frequency.exponentialRampToValueAtTime(2600, t + 0.16);
+      lp.frequency.exponentialRampToValueAtTime(300, t + 0.38);
+      const g = ac.createGain();
+      env(g, t, 0.35, 0.12, 0.28);
+      n.connect(lp).connect(g).connect(master);
+      n.start(t); n.stop(t + 0.45);
+    }
+
+    function cheer() {
+      if (!soundOn || !ensureAudio()) return;
+      [523, 659, 784, 1046].forEach((f, i) => {
+        const t = ac.currentTime + 0.01 + i * 0.07;
+        const o = ac.createOscillator();
+        o.type = 'triangle'; o.frequency.value = f;
+        const g = ac.createGain();
+        env(g, t, 0.22, 0.005, 0.18);
+        o.connect(g).connect(master);
+        o.start(t); o.stop(t + 0.22);
+      });
+    }
+
+    return {
+      isIOS, canVibrate, tick, pattern, pop, whoosh, cheer, ensureAudio,
+      get soundOn() { return soundOn; },
+      set soundOn(v) { soundOn = v; },
+    };
+  })();
+
+  // ---------------------------------------------------------------------------
+  // Pop-it toy
+  // ---------------------------------------------------------------------------
+  const PALETTES = [
+    ['#ff5470', '#ff8a3d', '#ffc93c', '#7bd389', '#3ec6e0', '#4f8cff', '#8a6cff', '#e36bd8'],
+    ['#00b8a9', '#2ec4b6', '#3fa7ff', '#4f7cff', '#6a6cff', '#3fa7ff', '#2ec4b6', '#00b8a9'],
+    ['#ff7eb6', '#ff9ec7', '#ffb3d1', '#c9a7ff', '#a68bff', '#ffb3d1', '#ff9ec7', '#ff7eb6'],
+    ['#ff6b4a', '#ff8f3f', '#ffb238', '#ffd23f', '#ffb238', '#ff8f3f', '#ff6b4a', '#f2545b'],
+  ];
+  const COLS = 6, ROWS = 8, TOTAL = COLS * ROWS;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d');
+  const countEl = document.getElementById('count');
+  const hintEl = document.getElementById('hint');
+
+  const state = {
+    palette: 0,
+    bubbles: [],
+    ripples: [],
+    geo: null,
+    flip: null,       // { start, swapped }
+    press: 0, pressV: 0, // whole-board squish
+    popped: 0,
+    pointers: new Map(),
+    autoFlipTimer: 0,
+  };
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      state.bubbles.push({ r, c, up: true, t: 1, v: 0, squash: 0, sv: 0 });
+    }
+  }
+
+  // --- colour helpers ---
+  function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+  function shade(h, amt) {
+    const [r, g, b] = hexToRgb(h);
+    const f = amt < 0 ? (x) => x * (1 + amt) : (x) => x + (255 - x) * amt;
+    return `rgb(${f(r) | 0},${f(g) | 0},${f(b) | 0})`;
+  }
+  function rgba(h, a) { const [r, g, b] = hexToRgb(h); return `rgba(${r},${g},${b},${a})`; }
+
+  // --- layout ---
+  function layout() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const W = rect.width, H = rect.height;
+    const pad = 10;
+    const cell = Math.min((W - pad * 2) / (COLS + 0.6), (H - pad * 2) / (ROWS + 0.6));
+    const bw = cell * (COLS + 0.6), bh = cell * (ROWS + 0.6);
+    state.geo = { W, H, cell, bw, bh, bx: (W - bw) / 2, by: (H - bh) / 2, rad: cell * 0.36 };
+  }
+
+  function bubbleCenter(b) {
+    const g = state.geo;
+    return [g.bx + cell0(g) + b.c * g.cell + g.cell / 2, g.by + cell0(g) + b.r * g.cell + g.cell / 2];
+  }
+  function cell0(g) { return g.cell * 0.3; }
+
+  function bubbleAt(x, y) {
+    const g = state.geo;
+    const c = Math.floor((x - g.bx - cell0(g)) / g.cell);
+    const r = Math.floor((y - g.by - cell0(g)) / g.cell);
+    if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return null;
+    const b = state.bubbles[r * COLS + c];
+    const [cx, cy] = bubbleCenter(b);
+    // generous target: anywhere in the bubble's cell counts, for small fingers
+    return Math.hypot(x - cx, y - cy) <= g.cell * 0.62 ? b : null;
+  }
+
+  // --- interaction ---
+  function popBubble(b) {
+    if (!b.up || state.flip) return false;
+    b.up = false;
+    b.v -= 6;           // kick the spring so it overshoots like silicone
+    b.sv += 14;
+    state.pressV += 2.5;
+    state.popped++;
+    const pal = PALETTES[state.palette];
+    Feel.tick(12);
+    Feel.pop(380 + (ROWS - b.r) * 32 + b.c * 6);
+    const [x, y] = bubbleCenter(b);
+    if (!reduceMotion) state.ripples.push({ x, y, age: 0, color: pal[b.r] });
+    updateCount();
+    if (state.popped === TOTAL) {
+      hintEl.textContent = 'All popped! Flipping…';
+      clearTimeout(state.autoFlipTimer);
+      state.autoFlipTimer = setTimeout(() => startFlip(true), 650);
+    }
+    return true;
+  }
+
+  function startFlip(celebrate) {
+    if (state.flip) return;
+    clearTimeout(state.autoFlipTimer);
+    state.flip = { start: performance.now(), swapped: false };
+    Feel.whoosh();
+    if (celebrate) { Feel.cheer(); Feel.pattern(3, 90, 20); }
+    else Feel.pattern(2, 110, 18);
+  }
+
+  function finishFlipSwap() {
+    // Turning a pop-it over makes every pressed bubble a dome again, and the
+    // domes become dents.
+    let popped = 0;
+    for (const b of state.bubbles) {
+      b.up = !b.up;
+      b.t = -b.t;
+      if (!b.up) popped++;
+    }
+    state.popped = popped;
+    updateCount();
+    hintEl.textContent = 'Tap or swipe the bubbles';
+  }
+
+  function updateCount() {
+    countEl.innerHTML = `${state.popped} <small>/ ${TOTAL} popped</small>`;
+  }
+
+  function localPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    return [e.clientX - rect.left, e.clientY - rect.top];
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    Feel.ensureAudio();
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    const [x, y] = localPoint(e);
+    const b = bubbleAt(x, y);
+    state.pointers.set(e.pointerId, { last: b });
+    if (b) {
+      if (!popBubble(b)) { b.sv += 6; Feel.tick(6); } // a dent just squishes a little
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const p = state.pointers.get(e.pointerId);
+    if (!p) return;
+    const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of events) {
+      const [x, y] = localPoint(ev);
+      const b = bubbleAt(x, y);
+      if (b && b !== p.last) popBubble(b);
+      p.last = b;
+    }
+  });
+
+  ['pointerup', 'pointercancel'].forEach((type) => {
+    canvas.addEventListener(type, (e) => state.pointers.delete(e.pointerId));
+  });
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  // iOS unlocks audio on touchend; keep resuming until it's running.
+  document.addEventListener('touchend', () => Feel.ensureAudio(), { passive: true });
+
+  document.getElementById('flipBtn').addEventListener('click', () => startFlip(false));
+  document.getElementById('colorsBtn').addEventListener('click', () => {
+    state.palette = (state.palette + 1) % PALETTES.length;
+    Feel.tick(10);
+    Feel.pop(700);
+  });
+  const soundBtn = document.getElementById('soundBtn');
+  soundBtn.addEventListener('click', () => {
+    Feel.soundOn = !Feel.soundOn;
+    soundBtn.setAttribute('aria-pressed', String(Feel.soundOn));
+    soundBtn.textContent = Feel.soundOn ? '🔊' : '🔈';
+    Feel.tick(10);
+  });
+
+  // --- drawing ---
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawBoard() {
+    const g = state.geo, pal = PALETTES[state.palette];
+    const r = g.cell * 0.55;
+
+    // drop shadow under the silicone slab
+    ctx.save();
+    ctx.shadowColor = 'rgba(45,35,80,0.28)';
+    ctx.shadowBlur = g.cell * 0.5;
+    ctx.shadowOffsetY = g.cell * 0.18;
+    roundRect(g.bx, g.by, g.bw, g.bh, r);
+    ctx.fillStyle = pal[0];
+    ctx.fill();
+    ctx.restore();
+
+    // colour bands, one per row
+    ctx.save();
+    roundRect(g.bx, g.by, g.bw, g.bh, r);
+    ctx.clip();
+    for (let i = 0; i < ROWS; i++) {
+      const y0 = i === 0 ? g.by : g.by + cell0(g) + i * g.cell;
+      const y1 = i === ROWS - 1 ? g.by + g.bh : g.by + cell0(g) + (i + 1) * g.cell;
+      ctx.fillStyle = pal[i];
+      ctx.fillRect(g.bx, y0, g.bw, y1 - y0 + 0.5);
+    }
+    // soft rubbery sheen across the slab
+    const sheen = ctx.createLinearGradient(g.bx, g.by, g.bx + g.bw, g.by + g.bh);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.28)');
+    sheen.addColorStop(0.45, 'rgba(255,255,255,0.04)');
+    sheen.addColorStop(1, 'rgba(0,0,0,0.12)');
+    ctx.fillStyle = sheen;
+    ctx.fillRect(g.bx, g.by, g.bw, g.bh);
+    ctx.restore();
+
+    // raised rim
+    roundRect(g.bx + 1.5, g.by + 1.5, g.bw - 3, g.bh - 3, r - 1.5);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.stroke();
+  }
+
+  function drawBubble(b) {
+    const g = state.geo, pal = PALETTES[state.palette];
+    const color = pal[b.r];
+    const [x, y] = bubbleCenter(b);
+    const t = Math.max(-1.2, Math.min(1.2, b.t));
+    const sq = b.squash;
+    const rad = g.rad * (1 + 0.05 * t) * (1 + 0.06 * sq);
+
+    // groove around the bubble where it meets the slab
+    ctx.beginPath();
+    ctx.arc(x, y, g.rad * 1.12, 0, Math.PI * 2);
+    ctx.fillStyle = shade(color, -0.22);
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1 + 0.04 * sq, 1 - 0.04 * sq);
+
+    // body: light comes from the top-left. A dome is bright up there; a dent
+    // is shadowed up there and catches light bottom-right.
+    const off = -0.38 * rad * t;
+    const grad = ctx.createRadialGradient(off, off, rad * 0.05, 0, 0, rad * 1.05);
+    if (t >= 0) {
+      grad.addColorStop(0, shade(color, 0.55 * t));
+      grad.addColorStop(0.55, shade(color, 0.08 * t));
+      grad.addColorStop(1, shade(color, -0.28 * t));
+    } else {
+      const k = -t;
+      grad.addColorStop(0, shade(color, 0.22 * k));
+      grad.addColorStop(0.6, shade(color, -0.1 * k));
+      grad.addColorStop(1, shade(color, -0.32 * k));
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, rad, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    if (t > 0) {
+      // glossy highlight on a dome
+      ctx.beginPath();
+      ctx.ellipse(-rad * 0.36, -rad * 0.42, rad * 0.3, rad * 0.18, -0.7, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${0.6 * Math.min(1, t)})`;
+      ctx.fill();
+    } else {
+      // inner shadow crescent on a dent
+      const k = Math.min(1, -t);
+      ctx.beginPath();
+      ctx.arc(0, 0, rad * 0.92, Math.PI * 0.95, Math.PI * 1.85);
+      ctx.lineWidth = rad * 0.22;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(30,20,60,${0.22 * k})`;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, rad * 0.86, Math.PI * 0.05, Math.PI * 0.75);
+      ctx.lineWidth = rad * 0.12;
+      ctx.strokeStyle = `rgba(255,255,255,${0.3 * k})`;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawRipples(dt) {
+    const g = state.geo;
+    state.ripples = state.ripples.filter((rp) => (rp.age += dt) < 0.45);
+    for (const rp of state.ripples) {
+      const p = rp.age / 0.45;
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, g.rad * (1.1 + p * 0.9), 0, Math.PI * 2);
+      ctx.lineWidth = 4 * (1 - p);
+      ctx.strokeStyle = `rgba(255,255,255,${0.7 * (1 - p)})`;
+      ctx.stroke();
+    }
+  }
+
+  // --- simulation ---
+  function step(dt) {
+    for (const b of state.bubbles) {
+      const target = b.up ? 1 : -1;
+      // stiff, slightly under-damped spring: snappy with one wobble
+      b.v += (520 * (target - b.t) - 18 * b.v) * dt;
+      b.t += b.v * dt;
+      b.sv += (-700 * b.squash - 16 * b.sv) * dt;
+      b.squash += b.sv * dt;
+    }
+    state.pressV += (-300 * state.press - 14 * state.pressV) * dt;
+    state.press += state.pressV * dt;
+  }
+
+  let lastT = performance.now();
+  function frame(now) {
+    let dt = Math.min(0.033, (now - lastT) / 1000);
+    lastT = now;
+    // sub-step the springs for stability
+    for (let i = 0; i < 3; i++) step(dt / 3);
+
+    const g = state.geo;
+    ctx.clearRect(0, 0, g.W, g.H);
+    ctx.save();
+    const cx = g.W / 2, cy = g.H / 2;
+    ctx.translate(cx, cy);
+
+    let sx = 1;
+    if (state.flip) {
+      const dur = reduceMotion ? 260 : 520;
+      const p = Math.min(1, (now - state.flip.start) / dur);
+      sx = Math.cos(p * Math.PI);
+      if (p >= 0.5 && !state.flip.swapped) { state.flip.swapped = true; finishFlipSwap(); }
+      if (p >= 1) state.flip = null;
+      sx = Math.max(0.02, Math.abs(sx));
+    }
+    const squish = 1 - Math.max(-0.02, Math.min(0.03, state.press * 0.01));
+    ctx.scale(sx * squish, squish * (1 + (1 - sx) * 0.06));
+    ctx.translate(-cx, -cy);
+
+    drawBoard();
+    for (const b of state.bubbles) drawBubble(b);
+    drawRipples(dt);
+    ctx.restore();
+    requestAnimationFrame(frame);
+  }
+
+  function start() {
+    layout();
+    updateCount();
+    requestAnimationFrame((t) => { lastT = t; frame(t); });
+  }
+  window.addEventListener('resize', layout);
+  start();
+})();
+</script>
+</body>
+</html>
