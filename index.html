@@ -24,6 +24,7 @@
     color-scheme: light;
   }
   html, body { height: 100%; margin: 0; }
+  [hidden] { display: none !important; }
   body {
     background: radial-gradient(120% 90% at 50% 0%, var(--bg) 40%, var(--bg-deep) 100%), var(--bg);
     color: var(--ink);
@@ -74,6 +75,7 @@
   button:active { transform: translateY(3px); box-shadow: 0 0 0 var(--bg-deep), 0 2px 6px rgba(45, 35, 80, 0.12); background: var(--chip-press); }
   button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   #soundBtn[aria-pressed="false"] { color: var(--ink-soft); }
+  #backBtn { font-size: 1.6rem; line-height: 1; padding: 6px 14px 10px; }
   .hint {
     text-align: center;
     font-size: 0.95rem;
@@ -90,26 +92,112 @@
     display: block;
     touch-action: none;
   }
-  .tabs {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-  }
-  .tabs button {
+  /* --- home --- */
+  .home {
+    height: 100%;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 28px max(24px, env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
+    gap: 22px;
+    max-width: 560px;
+    margin: 0 auto;
+  }
+  .home-head h1 {
+    margin: 0;
+    font-size: clamp(2.4rem, 11vw, 3.4rem);
+    line-height: 0.95;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .home-head h1 span { display: inline-block; color: var(--accent); }
+  .home-head p { margin: 8px 0 0; font-size: 1.1rem; color: var(--ink-soft); }
+  .cards { flex: 1; display: flex; flex-direction: column; gap: 16px; }
+  .card {
+    display: flex;
     align-items: center;
-    gap: 2px;
-    padding: 8px 6px;
-    border-radius: 20px;
-    font-size: 0.9rem;
-    color: var(--ink-soft);
+    gap: 18px;
+    text-align: left;
+    padding: 14px 20px 14px 14px;
+    flex: 1 1 124px;
+    min-height: 124px;
+    max-height: 190px;
+    border-radius: 30px;
+    box-shadow: 0 5px 0 var(--card-edge), 0 12px 24px rgba(45, 35, 80, 0.14);
+    background: var(--card-bg);
+    transition: transform 0.12s cubic-bezier(.3,1.6,.5,1), box-shadow 0.12s ease;
   }
-  .tabs button[aria-pressed="true"] {
-    color: var(--ink);
-    box-shadow: 0 3px 0 var(--accent), 0 6px 14px rgba(123, 92, 255, 0.25);
+  .card:active { transform: translateY(4px) scale(0.98); box-shadow: 0 1px 0 var(--card-edge), 0 4px 10px rgba(45, 35, 80, 0.12); background: var(--card-bg); }
+  .card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .card-name { font-size: 1.7rem; line-height: 1.1; }
+  .card-line { font-size: 1rem; font-weight: 500; color: var(--ink-soft); }
+  .card-popit { --card-bg: linear-gradient(135deg, #fff1f4, #f1ecff); --card-edge: #e3d6ff; }
+  .card-squishy { --card-bg: linear-gradient(135deg, #fff3ea, #ffe6f0); --card-edge: #ffd6c2; }
+  .card-slime { --card-bg: linear-gradient(135deg, #eafff0, #e6f6ff); --card-edge: #c6efd4; }
+
+  .art { width: 96px; height: 96px; flex: none; position: relative; }
+  .art-popit {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 10px;
+    box-sizing: border-box;
+    border-radius: 22px;
+    background: linear-gradient(180deg, #ff5470 0 33%, #ffc93c 33% 66%, #4f8cff 66%);
+    box-shadow: inset 0 2px 0 rgba(255,255,255,0.4), 0 4px 10px rgba(45,35,80,0.18);
   }
-  .tab-icon { font-size: 1.6rem; line-height: 1.1; }
+  .art-popit i {
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, rgba(255,255,255,0.75), rgba(255,255,255,0.08) 45%, rgba(0,0,0,0.18) 100%);
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.1);
+  }
+  .art-popit i:nth-child(5) {
+    background: radial-gradient(circle at 68% 70%, rgba(255,255,255,0.35), rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.28) 100%);
+  }
+  .art-squishy::before {
+    content: "";
+    position: absolute;
+    inset: 12px 4px 6px;
+    border-radius: 50% 50% 46% 46% / 56% 56% 44% 44%;
+    background: radial-gradient(circle at 32% 26%, #ffe0cf, #ffb38a 55%, #e9946a);
+    box-shadow: 0 8px 10px -6px rgba(45,35,80,0.35);
+  }
+  .art-squishy::after {
+    content: "";
+    position: absolute;
+    left: 31px;
+    top: 46px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #3a2a4a;
+    box-shadow: 26px 0 0 #3a2a4a, -7px 12px 0 2px rgba(255,92,138,0.35), 33px 12px 0 2px rgba(255,92,138,0.35);
+  }
+  .art-slime {
+    border-radius: 44% 56% 48% 52% / 58% 46% 54% 42%;
+    background:
+      radial-gradient(circle at 30% 26%, rgba(255,255,255,0.7) 0 8%, transparent 9%),
+      radial-gradient(circle at 64% 60%, #fff 0 2%, transparent 3%),
+      radial-gradient(circle at 40% 72%, #fff3a8 0 2%, transparent 3%),
+      radial-gradient(circle at 74% 34%, #fff 0 1.6%, transparent 2.6%),
+      radial-gradient(circle at 36% 30%, #9cf5ad, #5ee07a 50%, #2fae55);
+    box-shadow: 0 8px 12px -6px rgba(30,90,50,0.4);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .card .art { transition: transform 0.25s cubic-bezier(.3,1.8,.5,1); }
+    .card:active .art { transform: scale(1.08, 0.9); }
+    .home-head h1 span { animation: wobble 2.8s ease-in-out infinite; transform-origin: 50% 100%; }
+  }
+  @keyframes wobble {
+    0%, 70%, 100% { transform: scale(1, 1); }
+    76% { transform: scale(1.08, 0.9); }
+    84% { transform: scale(0.96, 1.05); }
+    92% { transform: scale(1.02, 0.98); }
+  }
   .haptic-switch {
     position: fixed;
     left: -200px;
@@ -123,8 +211,16 @@
 </style>
 </head>
 <body>
-<div class="app">
+<main class="home" id="home">
+  <header class="home-head">
+    <h1><span>Squishy</span><br>Fidget</h1>
+    <p>Pick a toy to play with</p>
+  </header>
+  <div class="cards" id="cards"></div>
+</main>
+<div class="app" id="play" hidden>
   <div class="bar">
+    <button id="backBtn" type="button" aria-label="Back to all toys">‹</button>
     <div class="status" id="status" aria-live="polite"></div>
     <button id="colorsBtn" type="button" aria-label="Change colours">🎨</button>
     <button id="flipBtn" type="button" aria-label="Flip the pop it">🔄</button>
@@ -135,7 +231,6 @@
   <div class="stage">
     <canvas id="board"></canvas>
   </div>
-  <nav class="tabs" id="tabs" aria-label="Choose a toy"></nav>
 </div>
 <script src="js/paint.js"></script>
 <script src="js/feel.js"></script>
