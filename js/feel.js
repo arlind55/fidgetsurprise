@@ -184,9 +184,25 @@ window.Feel = (() => {
     tone('sine', vary(220), 120, ac.currentTime + 0.002, 0.12 * amount, 0.01, 0.08);
   }
 
+  // A crisp plastic click: switches, notches, detents.
+  function click(pitch = 1800, amount = 1) {
+    if (!ready()) return;
+    const t = ac.currentTime + 0.002, f = vary(pitch);
+    hiss('highpass', f, f, 0.7, t, 0.5 * amount, 0.0008, 0.012);
+    tone('triangle', f * 0.5, f * 0.3, t, 0.18 * amount, 0.001, 0.025);
+  }
+
+  // A chunky arcade button bottoming out.
+  function thock(pitch = 160) {
+    if (!ready()) return;
+    const t = ac.currentTime + 0.002, f = vary(pitch);
+    tone('sine', f * 1.6, f, t, 0.5, 0.002, 0.07);
+    hiss('bandpass', f * 9, f * 6, 2, t, 0.35, 0.001, 0.03);
+  }
+
   return {
     isIOS, canVibrate, tick, flush, pattern, ensureAudio,
-    pop, whoosh, cheer, squish, puff, gloop, plop, crunch,
+    pop, whoosh, cheer, squish, puff, gloop, plop, crunch, click, thock,
     get soundOn() { return soundOn; },
     set soundOn(v) { soundOn = v; },
   };
