@@ -3,11 +3,16 @@
 (() => {
   'use strict';
 
-  const ORDER = ['popit', 'squishy', 'slime'];
+  const ORDER = ['popit', 'squishy', 'slime', 'board', 'spinner'];
   const CARDS = {
     popit: { line: 'Pop all the bubbles', art: '<i></i>'.repeat(9) },
     squishy: { line: 'Squeeze the foam friend', art: '' },
     slime: { line: 'Stretch the gooey slime', art: '' },
+    board: { line: 'Flip, press, slide and twist', art: '<i></i><i></i><i></i><b></b>' },
+    spinner: {
+      line: 'Flick it and watch it go',
+      art: '<svg viewBox="0 0 100 100"><line x1="50" y1="50" x2="50" y2="22" stroke="#4f8cff" stroke-width="30" stroke-linecap="round"/><line x1="50" y1="50" x2="26" y2="64" stroke="#4f8cff" stroke-width="30" stroke-linecap="round"/><line x1="50" y1="50" x2="74" y2="64" stroke="#4f8cff" stroke-width="30" stroke-linecap="round"/><circle cx="50" cy="22" r="11" fill="#d9d4e8"/><circle cx="26" cy="64" r="11" fill="#d9d4e8"/><circle cx="74" cy="64" r="11" fill="#d9d4e8"/><circle cx="50" cy="50" r="10" fill="#fff"/></svg>',
+    },
   };
   const homeEl = document.getElementById('home');
   const playEl = document.getElementById('play');
